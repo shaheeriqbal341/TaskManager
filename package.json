@@ -1,0 +1,12 @@
+{
+  "name": "mini-task-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A simple MERN task manager",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start"
+  }
+}
