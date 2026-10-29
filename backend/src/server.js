@@ -28,7 +28,7 @@ async function startServer() {
     console.error(`MongoDB connection error: ${error.message}`);
   });
 
-  app.listen(port, () => {
+  app.listen(port, "0.0.0.0", () => {
     console.log(`MiniTask Pro API listening on port ${port}`);
     console.log('Connected to MongoDB database "user".');
     startDeadlineReminderScheduler();
