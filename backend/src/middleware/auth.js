@@ -1,12 +1,13 @@
 const jwt = require("jsonwebtoken");
 const { timingSafeEqual } = require("node:crypto");
 const User = require("../models/User");
+const { getAllowedOrigins, isProductionEnvironment } = require("../config/deployment");
 
 const AUTH_COOKIE = "minitask_session";
 const CSRF_COOKIE = "minitask_csrf";
 
 function cookieOptions(path = "/") {
-  const production = process.env.NODE_ENV === "production";
+  const production = isProductionEnvironment();
   return {
     httpOnly: true,
     secure: production,
@@ -54,10 +55,7 @@ function csrfProtection(req, res, next) {
   }
 
   const origin = req.get("Origin");
-  const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const allowedOrigins = getAllowedOrigins();
   if (origin && !allowedOrigins.includes(origin)) {
     return res.status(403).json({ error: "This request origin is not allowed." });
   }

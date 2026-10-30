@@ -7,17 +7,19 @@ const tasksRouter = require("./routes/tasks");
 const workspaceRouter = require("./routes/workspace");
 const { csrfProtection } = require("./middleware/auth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
+const { getAllowedOrigins, isProductionEnvironment } = require("./config/deployment");
 
 const app = express();
-app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
-const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+app.set("trust proxy", isProductionEnvironment() ? 1 : false);
+const allowedOrigins = getAllowedOrigins();
 
 app.use(
   cors({
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-CSRF-Token"],
+    optionsSuccessStatus: 204,
+    maxAge: 600,
     origin(origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
