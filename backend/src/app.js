@@ -2,9 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const mongoose = require("mongoose");
+const { timingSafeEqual } = require("node:crypto");
 const authRouter = require("./routes/auth");
 const tasksRouter = require("./routes/tasks");
 const workspaceRouter = require("./routes/workspace");
+const { checkUpcomingDeadlines } = require("./services/deadlineReminders");
 const { csrfProtection } = require("./middleware/auth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 const { getAllowedOrigins, isProductionEnvironment } = require("./config/deployment");
@@ -40,6 +42,26 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     database: connected ? "connected" : "disconnected",
   });
+});
+app.get("/api/internal/deadline-reminders", async (req, res, next) => {
+  const secret = process.env.CRON_SECRET;
+  const authorization = req.get("Authorization");
+  const expected = typeof secret === "string" ? `Bearer ${secret}` : "";
+  if (
+    !expected ||
+    typeof authorization !== "string" ||
+    authorization.length !== expected.length ||
+    !timingSafeEqual(Buffer.from(authorization), Buffer.from(expected))
+  ) {
+    return res.status(401).json({ error: "Unauthorized scheduled request." });
+  }
+
+  try {
+    const created = await checkUpcomingDeadlines();
+    res.json({ remindersCreated: created });
+  } catch (error) {
+    next(error);
+  }
 });
 app.use("/api/auth", authRouter);
 app.use("/api/tasks", tasksRouter);

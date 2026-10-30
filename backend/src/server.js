@@ -31,7 +31,9 @@ async function startServer() {
   app.listen(port, "0.0.0.0", () => {
     console.log(`MiniTask Pro API listening on port ${port}`);
     console.log('Connected to MongoDB database "user".');
-    startDeadlineReminderScheduler();
+    if (process.env.VERCEL !== "1") {
+      startDeadlineReminderScheduler();
+    }
   });
 }
 

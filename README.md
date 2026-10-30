@@ -60,9 +60,10 @@ Set these backend variables in `backend/.env`:
 |---|---|
 | `MONGODB_URI` | Your private Atlas connection string. |
 | `JWT_SECRET` | Random secret of at least 32 characters. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`; keep the output private. |
-| `PORT` | `5000` for local development; Render supplies this in production. |
+| `PORT` | `5000` for local development; the deployment runtime supplies a port where required. |
 | `FRONTEND_URL` | Exact frontend origin, normally `http://localhost:5173`. Multiple approved origins may be comma-separated. |
-| `NODE_ENV` | Use `production` on Render so auth cookies use `Secure` and `SameSite=None`. |
+| `NODE_ENV` | Set to `production` in production. Vercel is also detected for secure cookie behavior. |
+| `CRON_SECRET` | Random secret used to authorize the scheduled deadline-reminder endpoint. Keep it private. |
 
 The backend explicitly selects database `user`; the Task model explicitly selects collection `HR`. Neither setting should be changed during deployment.
 
@@ -154,27 +155,27 @@ Confirm no real Atlas URI, JWT secret, or other credentials appear in the staged
 
 ## Deployment
 
-### Backend on Render
+### Deploy both projects on Vercel
 
-1. Create a Render **Web Service** from the repository and set its root directory to `backend`.
-2. Set the build command to `npm install` and the start command to `npm start`.
-3. Add `MONGODB_URI`, `JWT_SECRET`, `FRONTEND_URL`, and `NODE_ENV=production` in Render's environment settings. Generate a new production JWT secret; do not reuse a committed value. Set `FRONTEND_URL` to the exact deployed frontend origin, with no path or trailing slash.
-4. In Atlas Network Access, allow the Render service's outbound IP addresses if available; otherwise use Atlas's documented broader network option only after reviewing its security implications.
-5. After deployment, verify `https://<render-host>/api/health` reports `"database":"connected"`.
+Create two Vercel projects from the existing GitHub repository; do not create a replacement repository:
 
-### Frontend on Vercel
+1. **Frontend project:** set Root Directory to `frontend`, Framework Preset to Vite, build command to `npm run build`, and output directory to `dist`. Set Production `VITE_API_BASE_URL` to the backend's HTTPS origin only (no `/api` suffix).
+2. **Backend project:** set Root Directory to `backend` and use the Express framework preset/automatic Express detection. Vercel's Express runtime supports the existing `src/server.js` Express entrypoint. The `backend/vercel.json` adds the deadline cron. Configure Production variables `MONGODB_URI`, `JWT_SECRET`, `FRONTEND_URL`, and `CRON_SECRET`; set `NODE_ENV=production` if the project does not provide it. Do not configure frontend secrets.
+3. Set `FRONTEND_URL` to the exact production frontend origin, with no path or trailing slash. If preview deployments need API access, add only the exact preview origins that should be trusted.
+4. In Atlas Network Access, allow the backend runtime's outbound access using the narrowest option supported by your Atlas/Vercel setup. Ensure the existing Atlas database user can access database `user`; do not change the URI database or the Task collection.
+5. After deployment, verify `https://<backend-host>/api/health` reports `"database":"connected"` before testing authentication and workflows.
 
-1. Import the repository into Vercel and set the root directory to `frontend`.
-2. Use build command `npm run build` and output directory `dist`.
-3. Set `VITE_API_BASE_URL` to the deployed API origin, such as `https://<render-host>` (no `/api` suffix).
-4. Set Render's `FRONTEND_URL` to the exact production Vercel origin. If Vercel preview origins need access, add only the exact preview origins you intend to trust.
-5. Redeploy after setting environment variables. Test signup, refresh/session restore, task access, and logout on the deployed frontend.
+The backend uses database `user`, and the Task model uses collection `HR`; deployment does not require replacing, migrating, or deleting data. Set `MONGODB_URI` in the backend project's Vercel **Settings → Environment Variables → Production** to the existing Atlas connection string; never put it in frontend variables or source control. Set `JWT_SECRET` to a private random value of at least 32 characters and `CRON_SECRET` to a separate private random value. Enter both only through Vercel's environment-variable interface.
 
-Authentication uses credentialed cross-origin cookies. In production, set the backend `FRONTEND_URL` to the exact frontend origin (for this deployment: `https://task-manager-i2sh.vercel.app`, with no trailing slash); set only the origins that should be trusted. Set frontend `VITE_API_BASE_URL` to the backend origin used by the browser, with no `/api` suffix. The API accepts credentialed requests and preflights for its used methods and headers; it does not use wildcard origins. Set `NODE_ENV=production` on the backend (Vercel's `VERCEL=1` also enables secure cookie behavior). Production cookies are `Secure` and `SameSite=None`. Some browsers or privacy settings block third-party cookies between separate Vercel domains. For reliable production authentication, use custom frontend/API subdomains under the same registrable domain (for example `app.example.com` and `api.example.com`), then set `VITE_API_BASE_URL` and `FRONTEND_URL` to those exact HTTPS origins. Custom domains, hosting accounts, and deployment are user-managed; this project setup does not create or deploy those services.
+Authentication uses credentialed cross-origin cookies. The exact `FRONTEND_URL` allowlist enables the frontend origin; production cookies are `Secure`, `HttpOnly`, and `SameSite=None`. Some browser privacy settings block third-party cookies between separate `vercel.app` domains. If this affects sign-in, consider verified custom frontend/API subdomains under the same registrable domain.
+
+#### Deadline reminder scheduling on Vercel Hobby
+
+The persistent process interval is retained for local or persistent-server deployments, but it is not used on Vercel. Vercel Cron calls the protected `GET /api/internal/deadline-reminders` endpoint once daily at 00:00 UTC. The endpoint requires `Authorization: Bearer <CRON_SECRET>` and checks the existing actionable workflow statuses/current active assignee before creating an idempotent in-app notification. Hobby cron timing has up to 59 minutes of variance and only runs once per day; outages or execution after a task's deadline can also mean a reminder is late or missed. Therefore, the existing approximately 24-hour reminder requirement cannot be guaranteed on Hobby. No paid plan is assumed or required by this configuration.
 
 ## Troubleshooting
 
-- **API unreachable:** confirm the backend is running and `VITE_API_BASE_URL` points to its origin.
+- **API unreachable:** confirm `VITE_API_BASE_URL` points to the backend origin, then check `/api/health` and the backend Vercel runtime logs.
 - **CORS error:** set `FRONTEND_URL` to the exact browser origin (`scheme://host[:port]`) and restart/redeploy the backend.
 - **Authentication fails after deployment:** confirm HTTPS, the frontend/API URLs, credentialed CORS, and browser cookie permissions. Prefer same-site custom domains if third-party cookies are blocked.
 - **Backend exits at startup:** verify `MONGODB_URI` and `JWT_SECRET` are set in the backend environment. The backend requires a JWT secret of at least 32 characters.
