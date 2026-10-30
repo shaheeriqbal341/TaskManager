@@ -10,6 +10,7 @@ const { checkUpcomingDeadlines } = require("./services/deadlineReminders");
 const { csrfProtection } = require("./middleware/auth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 const { getAllowedOrigins, isProductionEnvironment } = require("./config/deployment");
+const { connectToDatabase } = require("./config/database");
 
 const app = express();
 app.set("trust proxy", isProductionEnvironment() ? 1 : false);
@@ -35,6 +36,22 @@ app.use(
 app.use(express.json({ limit: "10kb" }));
 app.use(cookieParser());
 app.use("/api", csrfProtection);
+app.use("/api", async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown connection error";
+    const safeMessage = message.replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, "[REDACTED_MONGODB_URI]");
+    const code = error && typeof error === "object" && "code" in error ? ` (${error.code})` : "";
+    console.error(`MongoDB connection failed${code}: ${safeMessage}`);
+
+    if (req.path === "/health") {
+      return res.status(503).json({ status: "ok", database: "disconnected" });
+    }
+    return res.status(503).json({ error: "Database unavailable." });
+  }
+});
 
 app.get("/api/health", (req, res) => {
   const connected = mongoose.connection.readyState === 1;
